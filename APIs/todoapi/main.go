@@ -24,9 +24,14 @@ type Todo struct {
 	ID     int    `json:"id"`
 	Task   string `json:"task"`
 	Status string `json:"status"`
+	//User_id  int    `json:user_id"`
 }
 type TodoStore struct {
 	db *sql.DB
+}
+
+type AuthHandler struct {
+	users *UserStore
 }
 
 func (s *TodoStore) Add(todo Todo) (Todo, error) {
@@ -133,20 +138,30 @@ func main() {
 	handler := &Handler{store: store}
 
 	//http.HandleFunc("/", healthHandler)
-	http.HandleFunc("PATCH /todos/{id}", handler.Patch)
-	http.HandleFunc("PUT /todos/{id}", handler.Put)
-	http.HandleFunc("GET /todos/{id}", handler.GetById)
-	http.HandleFunc("DELETE /todos/{id}", handler.Delete)
-	http.HandleFunc("POST /todos", handler.createTodo)
-	http.HandleFunc("GET /todos", handler.getTodos)
+	mux := http.NewServeMux()
+	mux.HandleFunc("PATCH /todos/{id}", handler.Patch)
+	mux.HandleFunc("PUT /todos/{id}", handler.Put)
+	mux.HandleFunc("GET /todos/{id}", handler.GetById)
+	mux.HandleFunc("DELETE /todos/{id}", handler.Delete)
+	mux.HandleFunc("POST /todos", handler.createTodo)
+	mux.HandleFunc("GET /todos", handler.getTodos)
+
+	authStore := &UserStore{db: db}
+	authHandler := &AuthHandler{users: authStore}
+
+	mux.HandleFunc("POST /todos/signup", authHandler.Signup)
+	mux.HandleFunc("POST /todos/login", authHandler.Login)
+
+	wrapper := Chain(mux, Logging, Cors)
+
 	log.Println("Listening on port 8000")
 
-	http.ListenAndServe(":8000", nil)
+	http.ListenAndServe(":8000", wrapper)
 }
 
-func healthHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "This is the health checker")
-}
+// func healthHandler(w http.ResponseWriter, r *http.Request) {
+// 	fmt.Fprintf(w, "This is the health checker")
+// }
 
 func (h *Handler) createTodo(w http.ResponseWriter, r *http.Request) {
 	todo := Todo{}
@@ -253,4 +268,47 @@ func (h *Handler) Patch(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(updated)
+}
+
+func (u *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
+	var req SignupRequest
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	user, err := u.users.CreateUser(req.Email, req.Password)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "Application/json")
+	json.NewEncoder(w).Encode(user)
+}
+
+func (u *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
+	var req SignupRequest
+
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+
+	user, hash, err := u.users.GetByEmail(req.Email)
+	if err != nil {
+		http.Error(w, "Invalid email", http.StatusUnauthorized)
+		return
+	}
+
+	err = ComparePasswords(hash, req.Password)
+	if err != nil {
+		http.Error(w, "Invalid password", http.StatusUnauthorized)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "login successful",
+		"user":    user.Email,
+	})
 }
