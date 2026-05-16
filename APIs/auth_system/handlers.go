@@ -8,9 +8,9 @@ import (
 )
 
 type AuthHandler struct {
-	store        *UserStore
-	sessionStore *SessionStore
-	todos        *TodoStore
+	store    *UserStore
+	todos    *TodoStore
+	sessions *SessionStore
 }
 
 type SignupRequest struct {
@@ -59,6 +59,7 @@ func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	user, hash, err := a.store.GetByEmail(req.Email)
 	if err == sql.ErrNoRows {
+		log.Println(err)
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
 	}
@@ -75,15 +76,21 @@ func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sessionID := GenerateSessionId()
-	a.sessionStore.sessions[sessionID] = user.ID
+	sessionID, err := a.sessions.CeateSession(user.ID)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, "failed to create session", 500)
+		return
+	}
 
-	http.SetCookie(w, &http.Cookie{
-		Name:     "session_id",
-		Value:    sessionID,
-		HttpOnly: true,
-		Path:     "/",
-	})
+	// http.SetCookie(w, &http.Cookie{
+	// 	Name:     "session_id",
+	// 	Value:    sessionID,
+	// 	HttpOnly: true,
+	// 	Path:     "/",
+	// })
+
+	SessionCookie(w, sessionID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
@@ -99,8 +106,8 @@ func (a *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, ok := a.sessionStore.sessions[cookie.Value]
-	if !ok {
+	userID, err := a.sessions.GetUserID(cookie.Value)
+	if err != nil {
 		http.Error(w, "invalid session", http.StatusUnauthorized)
 		return
 	}
@@ -117,15 +124,16 @@ func (a *AuthHandler) GetTodos(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, ok := a.sessionStore.sessions[cookie.Value]
-	if !ok {
+	userID, err := a.sessions.GetUserID(cookie.Value)
+	if err != nil {
+		log.Println(err)
 		http.Error(w, "invalid session", http.StatusUnauthorized)
 		return
 	}
-
-	todos, err := a.todos.GetAll()
+	todos, err := a.todos.GetAll(userID)
 	if err != nil {
-		http.Error(w, "garbage pleace", http.StatusInternalServerError)
+		log.Println(err)
+		http.Error(w, "No todos please", http.StatusInternalServerError)
 		return
 	}
 
@@ -141,8 +149,9 @@ func (a *AuthHandler) CreateTodo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, ok := a.sessionStore.sessions[cookie.Value]
-	if !ok {
+	userID, err := a.sessions.GetUserID(cookie.Value)
+	if err != nil {
+		log.Println(err)
 		http.Error(w, "invalid session", http.StatusUnauthorized)
 		return
 	}
@@ -155,8 +164,9 @@ func (a *AuthHandler) CreateTodo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	todo, err = a.todos.Add(todo)
+	todo, err = a.todos.Add(todo, userID)
 	if err != nil {
+		log.Println(err)
 		http.Error(w, "failed to add todo", http.StatusInternalServerError)
 		return
 	}

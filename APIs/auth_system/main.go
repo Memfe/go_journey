@@ -18,11 +18,11 @@ func main() {
 	}
 
 	sessions := &SessionStore{
-		sessions: make(map[string]int),
+		db: db,
 	}
 	store := &UserStore{db: db}
 	todos := &TodoStore{db: db}
-	authHandler := &AuthHandler{store: store, sessionStore: sessions, todos: todos}
+	authHandler := &AuthHandler{store: store, sessions: sessions, todos: todos}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /signup", authHandler.Signup)
