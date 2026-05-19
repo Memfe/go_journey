@@ -27,9 +27,9 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /signup", authHandler.Signup)
 	mux.HandleFunc("POST /login", authHandler.Login)
-	mux.HandleFunc("GET /me", authHandler.Me)
-	mux.HandleFunc("POST /create", authHandler.CreateTodo)
-	mux.HandleFunc("GET /get", authHandler.GetTodos)
+	mux.Handle("GET /me", authHandler.AuthMiddleware(http.HandlerFunc(authHandler.Me)))
+	mux.Handle("POST /create", authHandler.AuthMiddleware(http.HandlerFunc(authHandler.CreateTodo)))
+	mux.Handle("GET /get", authHandler.AuthMiddleware(http.HandlerFunc(authHandler.GetTodos)))
 
 	log.Println("Listening on Port 8000")
 	http.ListenAndServe(":8000", mux)

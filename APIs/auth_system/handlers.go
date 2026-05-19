@@ -100,17 +100,7 @@ func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie("session_id")
-	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	userID, err := a.sessions.GetUserID(cookie.Value)
-	if err != nil {
-		http.Error(w, "invalid session", http.StatusUnauthorized)
-		return
-	}
+	userID, _ := GetUserIDFromContext(r)
 
 	json.NewEncoder(w).Encode(map[string]int{
 		"user_id": userID,
@@ -118,18 +108,9 @@ func (a *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *AuthHandler) GetTodos(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie("session_id")
-	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
 
-	userID, err := a.sessions.GetUserID(cookie.Value)
-	if err != nil {
-		log.Println(err)
-		http.Error(w, "invalid session", http.StatusUnauthorized)
-		return
-	}
+	userID, _ := GetUserIDFromContext(r)
+
 	todos, err := a.todos.GetAll(userID)
 	if err != nil {
 		log.Println(err)
@@ -143,22 +124,12 @@ func (a *AuthHandler) GetTodos(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *AuthHandler) CreateTodo(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie("session_id")
-	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
 
-	userID, err := a.sessions.GetUserID(cookie.Value)
-	if err != nil {
-		log.Println(err)
-		http.Error(w, "invalid session", http.StatusUnauthorized)
-		return
-	}
+	userID, _ := GetUserIDFromContext(r)
 
 	defer r.Body.Close()
 	var todo Todo
-	err = json.NewDecoder(r.Body).Decode(&todo)
+	err := json.NewDecoder(r.Body).Decode(&todo)
 	if err != nil {
 		http.Error(w, "failed to parse todo", http.StatusBadRequest)
 		return

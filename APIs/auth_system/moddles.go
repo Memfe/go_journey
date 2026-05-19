@@ -129,6 +129,11 @@ func (s *SessionStore) GetUserID(sessionId string) (int, error) {
 		return 0, err
 	}
 
+	if time.Now().After(expiresAt) {
+		go s.Delete(sessionId)
+		return 0, sql.ErrNoRows
+	}
+
 	return userId, nil
 }
 
