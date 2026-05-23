@@ -16,7 +16,7 @@ func GetUserIDFromContext(r *http.Request) (int, bool) {
 }
 
 func Chain(h http.Handler, middlewares ...func(w http.Handler) http.Handler) http.Handler {
-	for i := len(middlewares) - 1; i > 0; i-- {
+	for i := len(middlewares) - 1; i >= 0; i-- {
 		h = middlewares[i](h)
 	}
 	return h

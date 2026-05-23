@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
+	"time"
 
 	_ "github.com/lib/pq"
 )
@@ -24,9 +25,23 @@ func main() {
 	todos := &TodoStore{db: db}
 	authHandler := &AuthHandler{store: store, sessions: sessions, todos: todos}
 
+	go func() {
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			err := authHandler.sessions.CleanupSession()
+			if err != nil {
+				log.Println(err)
+			}
+		}
+	}()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /signup", authHandler.Signup)
 	mux.HandleFunc("POST /login", authHandler.Login)
+	mux.HandleFunc("POST /logout", authHandler.Logout)
+
 	mux.Handle("GET /me", authHandler.AuthMiddleware(http.HandlerFunc(authHandler.Me)))
 	mux.Handle("POST /create", authHandler.AuthMiddleware(http.HandlerFunc(authHandler.CreateTodo)))
 	mux.Handle("GET /get", authHandler.AuthMiddleware(http.HandlerFunc(authHandler.GetTodos)))

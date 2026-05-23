@@ -76,7 +76,7 @@ func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sessionID, err := a.sessions.CeateSession(user.ID)
+	sessionID, err := a.sessions.CreateSession(user.ID)
 	if err != nil {
 		log.Println(err)
 		http.Error(w, "failed to create session", 500)
@@ -144,4 +144,26 @@ func (a *AuthHandler) CreateTodo(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(todo)
+}
+
+func (a *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+
+	cookie, err := r.Cookie("session_id")
+	if err != nil {
+		http.Error(w, "no session found", http.StatusUnauthorized)
+		return
+	}
+
+	err = a.sessions.Delete(cookie.Value)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, "failed to logout", http.StatusInternalServerError)
+		return
+	}
+	ClearSessionCookie(w)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "logout successful",
+	})
 }

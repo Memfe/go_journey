@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -101,15 +102,15 @@ func (u *UserStore) GetByEmail(email string) (User, string, error) {
 	return user, hash, err
 }
 
-func (s *SessionStore) GenereateSession() string {
+func (s *SessionStore) GenerateSession() string {
 	b := make([]byte, 32)
 	rand.Read(b)
 	return hex.EncodeToString(b)
 }
 
-func (s *SessionStore) CeateSession(userId int) (string, error) {
+func (s *SessionStore) CreateSession(userId int) (string, error) {
 	expiresAt := time.Now().Add(24 * time.Hour)
-	sessionId := s.GenereateSession()
+	sessionId := s.GenerateSession()
 	query := "INSERT INTO sessions (id, user_id, expires_at) VALUES($1, $2, $3)"
 
 	_, err := s.db.Exec(query, sessionId, userId, expiresAt)
@@ -121,17 +122,11 @@ func (s *SessionStore) CeateSession(userId int) (string, error) {
 
 func (s *SessionStore) GetUserID(sessionId string) (int, error) {
 	var userId int
-	var expiresAt time.Time
 
-	query := "SELECT user_id, expires_at FROM sessions WHERE id = $1"
-	err := s.db.QueryRow(query, sessionId).Scan(&userId, &expiresAt)
+	query := "SELECT user_id FROM sessions WHERE id = $1 AND expires_at>NOW()"
+	err := s.db.QueryRow(query, sessionId).Scan(&userId)
 	if err != nil {
 		return 0, err
-	}
-
-	if time.Now().After(expiresAt) {
-		go s.Delete(sessionId)
-		return 0, sql.ErrNoRows
 	}
 
 	return userId, nil
@@ -150,6 +145,8 @@ func SessionCookie(w http.ResponseWriter, sessionId string) {
 		HttpOnly: true,
 		Path:     "/",
 		MaxAge:   86400,
+		Secure:   true,
+		SameSite: http.SameSiteDefaultMode,
 	})
 }
 
@@ -161,4 +158,15 @@ func ClearSessionCookie(w http.ResponseWriter) {
 		MaxAge:   -1,
 		HttpOnly: true,
 	})
+}
+
+func (s *SessionStore) CleanupSession() error {
+	query := "DELETE FROM sessions WHERE expires_at<=NOW()"
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err := s.db.ExecContext(ctx, query)
+	if err != nil {
+		return err
+	}
+	return nil
 }
