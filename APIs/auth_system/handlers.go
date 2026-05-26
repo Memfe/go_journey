@@ -15,7 +15,9 @@ type AuthHandler struct {
 
 type SignupRequest struct {
 	Email    string `json:"email"`
-	Password string `json:"password"`
+	Password string `json:"-"`
+	Name     string `json:"name"`
+	Bio      string `json:"bio"`
 }
 
 type LoginRequest struct {
@@ -32,11 +34,20 @@ func (a *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer r.Body.Close()
-	if len(req.Password) < 6 {
-		http.Error(w, "weak password", http.StatusBadRequest)
+
+	v := New()
+
+	v.Check(len(req.Password) < 8, "Password", "Password must be 8 or more characters")
+	v.Check(IsEmail(req.Email), "Email", "Check the email pattern")
+	v.Check(req.Name != "", "name", "name must not be empty")
+	v.Check(req.Bio != "", "bio", "bio must not be empty")
+
+	if !v.Valid() {
+		v.ErrorHelper(w)
 		return
 	}
-	user, err := a.store.CreateUser(req.Email, req.Password)
+
+	user, err := a.store.CreateUser(req.Email, req.Password, req.Name, req.Bio)
 	if err != nil {
 		log.Println(err)
 		http.Error(w, "failed to create user", http.StatusInternalServerError)
@@ -57,7 +68,7 @@ func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	user, hash, err := a.store.GetByEmail(req.Email)
+	user, err := a.store.GetByEmail(req.Email)
 	if err == sql.ErrNoRows {
 		log.Println(err)
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
@@ -69,7 +80,7 @@ func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = ComparePassword(hash, req.Password)
+	err = ComparePassword(user.Password, req.Password)
 	if err != nil {
 		log.Println(err)
 		http.Error(w, "Invalid password", http.StatusBadRequest)
@@ -99,12 +110,38 @@ func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (a *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
+func (a *AuthHandler) Profile(w http.ResponseWriter, r *http.Request) {
 	userID, _ := GetUserIDFromContext(r)
 
-	json.NewEncoder(w).Encode(map[string]int{
-		"user_id": userID,
-	})
+	user, err := a.store.GetByID(userID)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, "user not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(user)
+}
+
+func (a *AuthHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
+	userID, _ := GetUserIDFromContext(r)
+
+	var user UserUpdate
+	err := json.NewDecoder(r.Body).Decode(&user)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+	updatedUser, err := a.store.UpdateUser(userID, user)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(updatedUser)
 }
 
 func (a *AuthHandler) GetTodos(w http.ResponseWriter, r *http.Request) {
@@ -132,6 +169,14 @@ func (a *AuthHandler) CreateTodo(w http.ResponseWriter, r *http.Request) {
 	err := json.NewDecoder(r.Body).Decode(&todo)
 	if err != nil {
 		http.Error(w, "failed to parse todo", http.StatusBadRequest)
+		return
+	}
+
+	v := New()
+	v.Check(todo.Task != "", "task", "todo must not be empty")
+	v.Check(todo.Status != "", "status", "status required")
+	if !v.Valid() {
+		v.ErrorHelper(w)
 		return
 	}
 

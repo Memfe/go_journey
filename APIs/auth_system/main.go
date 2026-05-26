@@ -10,6 +10,7 @@ import (
 )
 
 func main() {
+
 	db, err := sql.Open("postgres", "postgres://memfe:annansie@localhost:5432/myapp?sslmode=disable")
 	if err != nil {
 		log.Fatalln("Failed to open db", err)
@@ -42,7 +43,8 @@ func main() {
 	mux.HandleFunc("POST /login", authHandler.Login)
 	mux.HandleFunc("POST /logout", authHandler.Logout)
 
-	mux.Handle("GET /me", authHandler.AuthMiddleware(http.HandlerFunc(authHandler.Me)))
+	mux.Handle("GET /profile", authHandler.AuthMiddleware(http.HandlerFunc(authHandler.Profile)))
+	mux.Handle("POST /updateprofile", authHandler.AuthMiddleware(http.HandlerFunc(authHandler.UpdateProfile)))
 	mux.Handle("POST /create", authHandler.AuthMiddleware(http.HandlerFunc(authHandler.CreateTodo)))
 	mux.Handle("GET /get", authHandler.AuthMiddleware(http.HandlerFunc(authHandler.GetTodos)))
 
